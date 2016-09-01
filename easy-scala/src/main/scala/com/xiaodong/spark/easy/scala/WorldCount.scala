@@ -15,7 +15,8 @@ object WorldCount {
     val context = new SparkContext(conf)
     val lines = context.textFile("/Users/lixiaodong/Documents/JavaWordCount.java")
     val result = lines.flatMap(_.split(" ")).map((_, 1)).reduceByKey(_+_)
-    result.saveAsTextFile("/Users/lixiaodong/Documents/JavaWordCount")
+    result.saveAsTextFile("/Users/lixiaodong/Documents/output/noSort")
+    result.sortByKey().saveAsTextFile("/Users/lixiaodong/Documents/output/sort/")
     result.collect().foreach(println)
     context.stop()
   }
