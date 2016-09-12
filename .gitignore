@@ -14,3 +14,5 @@ hs_err_pid*
 /.idea/*
 /scala-easy/scala-easy.iml
 /easy-scala/easy-scala.iml
+/easy-scala/xiaodong-spark-easy-scala.iml
+/xiaodong-spark.iml
