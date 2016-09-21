@@ -20,6 +20,9 @@ object ForExample {
         foreach4(student)
         println
         println("--------------------------")
+        foreach4(foreach5(student))
+        println
+        println("--------------------------")
     }
 
     def foreach1(args : Array[String]) = args.foreach(print)
@@ -37,5 +40,9 @@ object ForExample {
         for (i <- 0 to length) {
             print(args(i))
         }
+    }
+
+    def foreach5(args: Array[String]) = {
+        for (arg <- args if arg == "hello") yield arg
     }
 }
