@@ -17,3 +17,5 @@ hs_err_pid*
 /easy-scala/xiaodong-spark-easy-scala.iml
 /xiaodong-spark.iml
 /easy-scala/target/
+/spark-examples/spark-examples.iml
+/spark-examples/target/
