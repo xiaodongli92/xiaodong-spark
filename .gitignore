@@ -19,3 +19,5 @@ hs_err_pid*
 /easy-scala/target/
 /spark-examples/spark-examples.iml
 /spark-examples/target/
+/*/*.iml
+/easy-spark/target/

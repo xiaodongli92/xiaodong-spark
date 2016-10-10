@@ -12,6 +12,7 @@
     <modules>
         <module>easy-scala</module>
         <module>spark-examples</module>
+        <module>easy-spark</module>
     </modules>
 
     <dependencies>
