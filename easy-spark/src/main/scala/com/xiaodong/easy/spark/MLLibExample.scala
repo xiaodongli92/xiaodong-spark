@@ -15,7 +15,34 @@ object MLLibExample {
         val conf = new SparkConf().setAppName("MLLibExample").setMaster("local")
         val context = new SparkContext(conf);
 //        summaryStatistics(context)
-        correlations(context)
+//        correlations(context)
+//        stratifiedSampling(context);
+        hypothesisTesting(context)
+    }
+
+    private def hypothesisTesting(context: SparkContext): Unit = {
+        val vector: Vector = Vectors.dense(0.1, 0.15, 0.2, 0.3, 0.25)
+        val goodnessOfFitTestResult = Statistics.chiSqTest(vector)
+        println("方法：" + goodnessOfFitTestResult.method)
+        println("自由度：" + goodnessOfFitTestResult.degreesOfFreedom)
+        println("卡方值：" + goodnessOfFitTestResult.statistic)
+        println("拒绝原假设的最小显著性水平：" + goodnessOfFitTestResult.pValue)
+    }
+
+    /**
+      * 分层抽样
+      */
+    private def stratifiedSampling(context: SparkContext): Unit = {
+        val data = context.parallelize(Seq(
+            (1, 'a'), (1, 'b'), (2, 'c'), (2, 'd'), (2, 'e'), (3, 'f')
+        ))
+        val fractions = Map(1 -> 0.1, 2 -> 0.6, 3 -> 0.3)
+        //每个层中大概的例子
+        val approxSample = data.sampleByKey(withReplacement = false, fractions = fractions)
+        println("每个层中大概的例子:" + approxSample.collect().mkString)
+        //每个层中准确的例子
+        val exactSample = data.sampleByKeyExact(withReplacement = false, fractions = fractions)
+        println("每个层中准确的例子:" + exactSample.collect().mkString)
     }
 
     /**
