@@ -1,10 +1,11 @@
 package com.xiaodong.easy.spark
 
 import org.apache.spark.mllib.linalg.{Matrices, Matrix, Vector, Vectors}
+import org.apache.spark.mllib.random.RandomRDDs
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.stat
 import org.apache.spark.mllib.stat.test.{BinarySample, ChiSqTestResult, StreamingTest}
-import org.apache.spark.mllib.stat.{MultivariateStatisticalSummary, Statistics}
+import org.apache.spark.mllib.stat.{KernelDensity, MultivariateStatisticalSummary, Statistics}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkConf, SparkContext}
@@ -16,19 +17,38 @@ object MLLibExample {
 
     def main(args: Array[String]): Unit = {
         val conf = new SparkConf().setAppName("MLLibExample").setMaster("local")
-//        val context = new SparkContext(conf);
-        val streamingContext = new StreamingContext(conf, Seconds(1))
+        val context = new SparkContext(conf);
+//        val streamingContext = new StreamingContext(conf, Seconds(1))
 //        summaryStatistics(context)
 //        correlations(context)
 //        stratifiedSampling(context);
 //        hypothesisTesting(context)
 //        kolmogorovSmirnovTest(context)
-        streamingSignificanceTesting(streamingContext)
-
+//        streamingSignificanceTesting(streamingContext)
+//        randomDataGeneration(context)
+        kernelDensityEstimation(context)
     }
 
-    private def randomDataGeneration(context:SparkContext): Unit = {
+    /**
+      * 核密度估计
+      */
+    private def kernelDensityEstimation(context:SparkContext): Unit = {
+        val data:RDD[Double] = context.parallelize(Seq(1,1,1,2,3,4,5,6,7,8,9,9))
+        println(data.collect().mkString)
+        val kd = new KernelDensity().setSample(data)//设置密度估计样本
+                .setBandwidth(3.0)//设置带宽，对高斯核函数来讲就是标准差
+        val densities = kd.estimate(Array(-1.0, 2.0, 5.0, 6.0, 7.0, 9.0))//给定相应的点，估计其概率密度
+        println(densities.mkString)
+    }
 
+    /**
+      * 随机数
+      */
+    private def randomDataGeneration(context:SparkContext): Unit = {
+        val u = RandomRDDs.normalRDD(context, 100L, 10)
+        println("原始：" + u.collect().mkString)
+        val v = u.map(x => 1.0 + 2.0 * x)
+        println("map后" + v.collect().mkString)
     }
 
     /**
