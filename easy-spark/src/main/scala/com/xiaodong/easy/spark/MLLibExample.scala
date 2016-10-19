@@ -27,6 +27,10 @@ object MLLibExample {
 
     }
 
+    private def randomDataGeneration(context:SparkContext): Unit = {
+
+    }
+
     /**
       * 显著性检验就是事先对总体形式做出一个假设，然后用样本信息来判断这个假设（原假设）是否合理，即判断真实情况与原假设是否显著地有差异。
       * 或者说，显著性检验要判断样本与我们对总体所做的假设之间的差异是否纯属偶然，还是由我们所做的假设与总体真实情况不一致所引起的
@@ -34,13 +38,17 @@ object MLLibExample {
       * windowSize: 采集窗口，如果给0，则不分批次一次处理全量数据
       */
     private def streamingSignificanceTesting(context: StreamingContext): Unit = {
-        val path = "E:\\program\\github\\xiaodong-spark\\easy-spark\\src\\main\\data\\streamingSignificanceTesting.txt"
+        context.checkpoint("E:\\program\\github\\spark_data\\")
+        val path = "E:\\program\\github\\spark_data\\streamingSignificanceTesting.txt"
         val data = context.textFileStream(path).map(line => line.split(",") match {
             case Array(label, value) => BinarySample(label.toBoolean, value.toDouble)
         })
+        data.print()
         val streamingTest = new StreamingTest().setPeacePeriod(0).setWindowSize(0).setTestMethod("welch")
         val out = streamingTest.registerStream(data)
         out.print()
+        context.start()
+        context.awaitTermination()
     }
 
     /**
