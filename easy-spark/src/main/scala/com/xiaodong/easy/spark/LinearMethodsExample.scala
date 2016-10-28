@@ -42,7 +42,7 @@ object LinearMethodsExample {
         val auROC = metrics.areaUnderROC()
         println("area and ROC = " + auROC)
 
-        model.save(context, "target/tmp/SVMWithSGDModel")
-        val sameModel = SVMModel.load(context, "target/tmp/SVMWithSGDModel")
+//        model.save(context, "target/tmp/SVMWithSGDModel")
+//        val sameModel = SVMModel.load(context, "target/tmp/SVMWithSGDModel")
     }
 }
