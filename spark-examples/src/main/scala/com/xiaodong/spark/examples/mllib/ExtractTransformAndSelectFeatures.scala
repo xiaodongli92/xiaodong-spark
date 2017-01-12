@@ -1,5 +1,6 @@
 package com.xiaodong.spark.examples.mllib
 
+import org.apache.spark.ml.attribute.Attribute
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.sql.{Row, SparkSession}
@@ -22,7 +23,142 @@ object ExtractTransformAndSelectFeatures {
 //        nGram(spark)
 //        binarizer(spark)
 //        pca(spark)
-        polynomialExpansion(spark)
+//        polynomialExpansion(spark)
+//        discreteCosineTransform(spark)
+//        stringIndexer(spark)
+//        index2String(spark)
+//        oneHotEncoder(spark)
+//        vectorIndexer(spark)
+        interaction(spark)
+    }
+
+    /**
+      * i列j纬度的输入得到1列j^i纬度
+      * (x,y) (m,n) => (xm,xn,ym,yn)
+      */
+    def interaction(spark: SparkSession): Unit = {
+        val df = spark.createDataFrame(Seq(
+            (1, 1, 2, 3, 8, 4, 5),
+            (2, 4, 3, 8, 7, 9, 8),
+            (3, 6, 1, 9, 2, 3, 6),
+            (4, 10, 8, 6, 9, 4, 5),
+            (5, 9, 2, 7, 10, 7, 3),
+            (6, 1, 1, 4, 2, 8, 4)
+        )).toDF("id1", "id2", "id3", "id4", "id5", "id6", "id7")
+        val assembler1 = new VectorAssembler().setInputCols(Array("id2","id3","id4")).setOutputCol("vec1")
+        val assemblerDF1 = assembler1.transform(df)
+
+        val assembler2 = new VectorAssembler().setInputCols(Array("id5","id6","id7")).setOutputCol("vec2")
+        val assemblerDF2 = assembler2.transform(assemblerDF1).select("id1", "vec1", "vec2")
+
+        val interaction = new Interaction().setInputCols(Array("id1", "vec1", "vec2")).setOutputCol("interaction")
+        val interactionDF = interaction.transform(assemblerDF2)
+        interactionDF.show(false)
+
+    }
+
+    /**
+      * 主要作用：提高决策树或随机森林等ML方法的分类效果
+      * 是对数据集特征向量中的类别（离散值）特征进行编号
+      * 它能够自动判断那些特征是离散值型的特征，并对他们进行编号，具体做法是通过设置一个maxCategories，
+      * 特征向量中某一个特征不重复取值个数小于maxCategories，则被重新编号为0～K（K<=maxCategories-1）
+      * 某一个特征不重复取值个数大于maxCategories，则该特征视为连续值，不会重新编号（不会发生任何改变）
+      */
+    def vectorIndexer(spark: SparkSession): Unit = {
+        val data = spark.read.format("libsvm").load("spark-examples/src/main/resources/sample_libsvm_data.txt")
+
+        val indexer = new VectorIndexer().setInputCol("features").setOutputCol("indexed").setMaxCategories(10)
+        val indexerModel = indexer.fit(data)
+
+        val categoricalFeatures:Set[Int] = indexerModel.categoryMaps.keys.toSet
+        println(s"Chose ${categoricalFeatures.size} categorical features: " + categoricalFeatures.mkString(", "))
+
+        val indexerData = indexerModel.transform(data)
+        indexerData.show(false)
+    }
+
+    /**
+      * 独热编码 将一列标签映射为二进制向量的一列
+      * 对于每一个特征，如果它有m个可能值，那么经过独热编码后，就变成了m个二元特征。
+      * 并且，这些特征互斥，每次只有一个激活。因此，数据会变成稀疏的
+      */
+    def oneHotEncoder(spark: SparkSession): Unit = {
+        val df = spark.createDataFrame(Seq(
+            (0, "a"),
+            (1, "b"),
+            (2, "c"),
+            (3, "a"),
+            (4, "a"),
+            (5, "c")
+        )).toDF("id", "category")
+        val indexer = new StringIndexer().setInputCol("category").setOutputCol("category_index").fit(df)
+        val indexerDF = indexer.transform(df)
+
+        val encoder = new OneHotEncoder().setInputCol("category_index").setOutputCol("category_vec")
+        val encoderDF = encoder.transform(indexerDF)
+        encoderDF.show(false)
+    }
+
+    /**
+      * 与StringIndexer对称的
+      * IndexToString将index映射回原先的labels
+      * 通常我们使用StringIndexer产生index，然后使用模型训练数据，最后使用IndexToString找回原先的labels
+      */
+    def index2String(spark: SparkSession): Unit = {
+        val df = spark.createDataFrame(Seq(
+            (0, "a"),
+            (1, "b"),
+            (2, "c"),
+            (3, "a"),
+            (4, "a"),
+            (5, "c")
+        )).toDF("id", "category")
+        val indexer = new StringIndexer().setInputCol("category").setOutputCol("category_indexer").fit(df)
+        val indexerDF = indexer.transform(df)
+        println(s"transform string column '${indexer.inputCol}' to '${indexer.outputCol}'")
+        indexerDF.show()
+
+        val inputColSchema = indexerDF.schema(indexer.getOutputCol)
+        println(s"StringIndexer 将要存储输出元数据列的标签: " +
+                s"${Attribute.fromStructField(inputColSchema).toString}")
+
+        val converter = new IndexToString().setInputCol("category_indexer").setOutputCol("original_category")
+        val converterDF = converter.transform(indexerDF)
+        converterDF.show(false)
+
+
+    }
+
+    /**
+      * 将一列labels转为[0，labels基数]的index，出现最多次labels的index为0
+      */
+    def stringIndexer(spark: SparkSession): Unit = {
+        val df = spark.createDataFrame(Seq(
+            (0, "a"), (1, "b"), (2, "c"), (3, "a"), (4, "a"), (5, "c")
+        )).toDF("id", "category")
+        val indexer = new StringIndexer().setInputCol("category").setOutputCol("category_indexer")
+
+        val indexerDF = indexer.fit(df).transform(df)
+        indexerDF.show(false)
+
+        val indexer2 = new StringIndexer().setInputCol("category").setOutputCol("category_indexer2").setHandleInvalid("skip")
+        val indexerDF2  = indexer2.fit(df).transform(df)
+        indexerDF2.show(false)
+    }
+
+    /**
+      * 离散余弦变换(DCT)
+      */
+    def discreteCosineTransform(spark: SparkSession): Unit = {
+        val data = Seq(
+            Vectors.dense(0.0, 1.0, -2.0, 3.0),
+            Vectors.dense(-1.0, 2.0, 4.0, -7.0),
+            Vectors.dense(14.0, -2.0, -5.0, 1.0)
+        )
+        val df = spark.createDataFrame(data.map(Tuple1.apply)).toDF("features")
+        val dct = new DCT().setInputCol("features").setOutputCol("features_dct").setInverse(false)
+        val dctDF = dct.transform(df)
+        dctDF.select("features_dct").show(false)
     }
 
     /**
