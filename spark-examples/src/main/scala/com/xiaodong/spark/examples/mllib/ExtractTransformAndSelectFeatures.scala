@@ -29,11 +29,34 @@ object ExtractTransformAndSelectFeatures {
 //        index2String(spark)
 //        oneHotEncoder(spark)
 //        vectorIndexer(spark)
-        interaction(spark)
+//        interaction(spark)
+        normalizer(spark)
     }
 
     /**
-      * i列j纬度的输入得到1列j^i纬度
+      * 将某个特征向量（由所有样本某一个特征组成的向量）计算其p-范数，然后对该每个元素除以p-范数。
+      * 将原始特征Normalizer以后可以使得机器学习算法有更好的表现。
+      * 1-范数(L1)：║x║1=│x1│+│x2│+…+│xn│
+      * ║x║2=（│x1│2+│x2│2+…+│xn│2） ^^ 1/2
+      * ∞-范数(L∞)：║x║∞=max（│x1│，│x2│，…，│xn│）
+      */
+    def normalizer(spark: SparkSession): Unit = {
+        val dataFrame = spark.createDataFrame(Seq(
+            (0, Vectors.dense(1.0, 0.5, -1.0)),
+            (1, Vectors.dense(2.0, 1.0, 1.0)),
+            (2, Vectors.dense(4.0, 10.0, 2.0))
+        )).toDF("id", "features")
+        val normalizer = new Normalizer().setInputCol("features").setOutputCol("normalFeatures").setP(1.0)
+        val l1NormalData = normalizer.transform(dataFrame)
+        println("Normalized using L^1 norm")
+        l1NormalData.show(false)
+        val lInfNormal = normalizer.transform(dataFrame, normalizer.p -> Double.PositiveInfinity)
+        println("Normalized using L^inf norm")
+        lInfNormal.show(false)
+    }
+
+    /**
+      * i列j纬度的输入得到1列j ^^ i纬度
       * (x,y) (m,n) => (xm,xn,ym,yn)
       */
     def interaction(spark: SparkSession): Unit = {
