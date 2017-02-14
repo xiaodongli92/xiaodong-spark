@@ -30,7 +30,24 @@ object ExtractTransformAndSelectFeatures {
 //        oneHotEncoder(spark)
 //        vectorIndexer(spark)
 //        interaction(spark)
-        normalizer(spark)
+//        normalizer(spark)
+        standardScaler(spark)
+    }
+
+    /**
+      * 标准化
+      * 对于训练集中的
+      */
+    def standardScaler(spark:SparkSession): Unit = {
+        val dataFrame = spark.read.format("libsvm").load("spark-examples/src/main/resources/sample_libsvm_data.txt")
+        val scaler = new StandardScaler()
+            .setInputCol("features")
+            .setOutputCol("scaledFeatures")
+            .setWithMean(false)
+            .setWithStd(true)
+        val scalerModel = scaler.fit(dataFrame)
+        val scalerData = scalerModel.transform(dataFrame)
+        scalerData.show(false)
     }
 
     /**
