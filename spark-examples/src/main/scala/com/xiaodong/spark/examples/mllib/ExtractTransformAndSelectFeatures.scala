@@ -31,20 +31,154 @@ object ExtractTransformAndSelectFeatures {
 //        vectorIndexer(spark)
 //        interaction(spark)
 //        normalizer(spark)
-        standardScaler(spark)
+//        standardScaler(spark)
+//        minMaxScaler(spark)
+//        maxAbsScaler(spark)
+//        bucketizer(spark)
+//        elementwiseProduct(spark)
+//        sqlTransformer(spark)
+        vectorAssembler(spark)
     }
 
     /**
+      * 向量组合
+      * 将给定的列列表组合成单个向量的变换器
+      * 有助于将由不同特征变换器生成的原始特征和特征组合成单个特征向量,以训练ML模型,如逻辑回归和决策树
+      * 接受类型:所有数字类型、布尔类型和向量类型
+      */
+    def vectorAssembler(spark:SparkSession): Unit = {
+        val dataset = spark.createDataFrame(Seq(
+            (0, 18, 1.0, Vectors.dense(0.0, 10.0, 0.5), 1.0)
+        )).toDF("id", "hour", "mobile", "userFeatures", "clicked")
+
+        val assembler = new VectorAssembler()
+          .setInputCols(Array("hour", "mobile", "userFeatures"))
+          .setOutputCol("features")
+
+        val output = assembler.transform(dataset)
+        println("assembled columns 'hour', 'mobile', 'userFeatures' to vector column 'features'")
+        output.show(false)
+    }
+
+    /**
+      * sql转换器
+      * 实现由sql语句定义的变换
+      * 目前只支持的语法:select from _this_,where _this_ 表示数据集的基础表
+      * select子句指定要在输出中显示的字段、常量和表达式,并且可以是spark sql支持的人格select子句
+      * 用户还可以使用spark sql内置函数和udf操作这些选定的列
+      */
+    def sqlTransformer(spark:SparkSession): Unit = {
+        val df = spark.createDataFrame(Seq(
+            (0, 1.0, 2.0),
+            (2, 2.0, 5.0)
+        )).toDF("id", "v1", "v2")
+        val sqlTrans = new SQLTransformer()
+          .setStatement("select *,(v1+v2) as v3, (v1*v2) as v4 from __THIS__")
+        sqlTrans.transform(df).show(false)
+    }
+
+    /**
+      * 元素乘积
+      * 使用元素级乘法将每个输入向量乘以提供的权重向量。
+      * 通过标量乘法器来缩放数据集的每一列
+      * hadamard乘积
+      * (v1...vn) . (w1...wm) = (v1w1...vnwm)
+      */
+    def elementwiseProduct(spark:SparkSession): Unit = {
+        val dataFrame = spark.createDataFrame(Seq(
+            ("a", Vectors.dense(1.0, 2.0, 3.0)),
+            ("b", Vectors.dense(4.0, 5.0, 6.0))
+        )).toDF("id", "vector")
+        val transformingVector = Vectors.dense(0.0, 1.0, 2.0)
+        val transformer = new ElementwiseProduct()
+          .setScalingVec(transformingVector)
+          .setInputCol("vector")
+          .setOutputCol("transformedVector")
+
+        transformer.transform(dataFrame).show(false)
+    }
+
+    /**
+      * 将连续要素列转换为要素桶列,其中存储桶由用户指定
+      * splits:用于将连续要素映射到bucket的参数,对于n+1分割,有n个桶。由于分割x,y定义的桶保存除了最后一个桶之外的范围[x,y)中的值
+      * splits应该严格增加,必须明确提供负无穷和正无穷的值
+      */
+    def bucketizer(spark:SparkSession): Unit = {
+        val splits = Array(Double.NegativeInfinity, -0.5, 0.0, 0.5, Double.PositiveInfinity)
+        val data = Array(-999.9, -0.5, -0.3, 0.0, 0.2, 999.9, 10, 0.5)
+        val dataFrame = spark.createDataFrame(data.map(Tuple1.apply)).toDF("features")
+
+        val bucketizer = new Bucketizer()
+          .setInputCol("features")
+          .setOutputCol("bucketedFeatures")
+          .setSplits(splits)
+        val bucketdData = bucketizer.transform(dataFrame)
+
+        println(s"bucketizer output with ${bucketizer.getSplits.length} buckets")
+        bucketdData.show(false)
+    }
+
+    /**
+      * 转换Vector行的数据集
+      * 通过划分每个要素中的最大绝对值,将每个元素重新缩放到范围[-1,1]
+      * 不会移动/居中数据,因此不会破坏任何稀疏性
+      */
+    def maxAbsScaler(spark:SparkSession): Unit = {
+        val dataFrame = spark.createDataFrame(Seq(
+            (0, Vectors.dense(1.0, 0.1, -8.0)),
+            (1, Vectors.dense(2.0, 1.0, -4.0)),
+            (2, Vectors.dense(4.0, 10.0, 8.0))
+        )).toDF("id", "features")
+        val scaler = new MaxAbsScaler()
+          .setInputCol("features")
+          .setOutputCol("scaledFeatures")
+
+        val scalerModel = scaler.fit(dataFrame)
+        val scaledData = scalerModel.transform(dataFrame)
+        scaledData.show(false)
+    }
+
+    /**
+      * 转换Vector行的数据集
+      * 最大最小规范化
+      * 将所有特征向量线性变换到用户指定最大-最小值。
+      * 但是在计算时还是一个个特征向量分开计算的,通常将最大、最小值设置为1和0,这样就归一化到[0,1]
+      * Rescaled(ei)=((ei−Emin)/(Emax−Emin)) ∗(max−min)+min
+      * For the case Emax==Emin, Rescaled(ei)=0.5∗(max+min)
+      */
+    def minMaxScaler(spark:SparkSession): Unit = {
+        val dataFrame = spark.createDataFrame(Seq(
+            (0, Vectors.dense(1.0, 0.1, -1.0)),
+            (0, Vectors.dense(2.0, 1.1, 1.0)),
+            (0, Vectors.dense(3.0, 10.1, 3.0))
+        )).toDF("id", "features")
+        val scaler = new MinMaxScaler()
+          .setInputCol("features")
+          .setOutputCol("scaledFeatures")
+          .setMin(0)
+          .setMax(1)
+
+        val scalerModel = scaler.fit(dataFrame)
+        val scalerData = scalerModel.transform(dataFrame)
+        println(s"Features scaled to range:[${scaler.getMin},${scaler.getMax}]")
+        scalerData.select("features", "scaledFeatures").show(false)
+    }
+
+    /**
+      * 转换Vector行的数据集
       * 标准化
-      * 对于训练集中的
+      * 对于训练集中的样本,基于列统计信息将数据以方差或(且)者将数据减去其均值(结果方差等于1,数据在0附近)
+      * 这是很常见的预处理步骤
+      * 例如:当所有的特征值为1的方差,且/或值为0的均值时,svm的径向基函数(RBF)核或者L1和L2正则线性模型通常有更好的效果
+      * 标准化可以提升模型优化阶段的收敛度,还可以避免方差很大的特征对模型训练产生过大的影响
       */
     def standardScaler(spark:SparkSession): Unit = {
         val dataFrame = spark.read.format("libsvm").load("spark-examples/src/main/resources/sample_libsvm_data.txt")
         val scaler = new StandardScaler()
             .setInputCol("features")
             .setOutputCol("scaledFeatures")
-            .setWithMean(false)
-            .setWithStd(true)
+            .setWithMean(false)//默认false,在缩放之前用平均值居中数据。它将构建密集输出,因此在应用于稀疏输入时要小心
+            .setWithStd(true)//默认true,将数据缩放到单位标准偏差
         val scalerModel = scaler.fit(dataFrame)
         val scalerData = scalerModel.transform(dataFrame)
         scalerData.show(false)
