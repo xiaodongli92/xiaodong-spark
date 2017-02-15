@@ -1,10 +1,11 @@
 package com.xiaodong.spark.examples.mllib
 
-import org.apache.spark.ml.attribute.Attribute
+import org.apache.spark.ml.attribute.{Attribute, AttributeGroup, NumericAttribute}
 import org.apache.spark.ml.feature._
 import org.apache.spark.ml.linalg.{Vector, Vectors}
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.StructType
 
 /**
   * Created by xiaodong on 2017/1/11.
@@ -37,7 +38,111 @@ object ExtractTransformAndSelectFeatures {
 //        bucketizer(spark)
 //        elementwiseProduct(spark)
 //        sqlTransformer(spark)
-        vectorAssembler(spark)
+//        vectorAssembler(spark)
+//        quantileDiscretizer(spark)
+//        vectorSlicer(spark)
+//        rFormula(spark)
+        chiSqSelector(spark)
+    }
+
+    /**
+      * 对具有分类特征的带标签数据进行操作,使用Chi-Squared独立性测试来决定选择那些特征
+      * numTopFeatures:根据卡方检验选择固定数量的顶部特征,类似于产生具有最大预测能力的特征
+      * percentile:类似于numTopFeature,但选择所有特征的一小部分,而不是固定数目
+      * fpr:选择p值低于阈值的所有特征,从而控制选择的误差
+      * 默认情况下,选择方法是numTopFeatures将默认顶部要素数设置为50,用户可以使用选择方法setSelectorType
+      */
+    def chiSqSelector(spark:SparkSession): Unit = {
+        val data = Seq(
+            (7, Vectors.dense(0.0, 0.0, 18.0, 1.0), 1.0),
+            (8, Vectors.dense(0.0, 1.0, 12.0, 0.0), 0.0),
+            (9, Vectors.dense(1.0, 0.0, 15.0, 0.1), 0.0)
+        )
+        val df = spark.createDataFrame(data).toDF("id", "features", "clicked")
+        val selector = new ChiSqSelector()
+          .setNumTopFeatures(3)
+          .setFeaturesCol("features")
+          .setLabelCol("clicked")
+          .setOutputCol("selectedFeatures")
+        val result = selector.fit(df).transform(df)
+        println(s"ChiSqSelector output with top ${selector.getNumTopFeatures} features selected")
+        result.show()
+    }
+
+    /**
+      * 将数据中的字段通过R语言的Model Formula转换成特征值,输出结果为一个特征向量和double类型的label
+      * 选择由R模型指定的列。目前只支持R运算符的有限子集,包括~ 。 : + -
+      * ~ 单独的目标和术语
+      * + 连接术语,"+0"表示删除截距
+      * - 删除一个术语, "-1"表示删除截距
+      * : 交互(数值的乘法,或二进制化的分类值)
+      * . 除目标之外所有的列
+      */
+    def rFormula(spark:SparkSession): Unit = {
+        val dataset = spark.createDataFrame(Seq(
+            (7, "US", 18, 1.0),
+            (8, "CA", 12, 0.0),
+            (9, "NZ", 15, 0.0)
+        )).toDF("id", "country", "hour", "clicked")
+
+        val formula = new RFormula()
+          .setFormula("clicked ~ country + hour")
+          .setFeaturesCol("features")
+          .setLabelCol("label")
+
+        val output = formula.fit(dataset).transform(dataset)
+        output.show(false)
+    }
+
+    /**
+      * 矢量切片机
+      * 取特征向量并输出具有原始特征的子阵列的新特征向量的变换器,从向量列中提取要素很有用
+      * 接受具有指定索引的向量列,然后输出到新的向量列,其值通过这些索引选择
+      */
+    def vectorSlicer(spark:SparkSession): Unit = {
+        val data = java.util.Arrays.asList(
+            Row(Vectors.sparse(3, Seq((0, -2.0), (1, 2.3)))),
+            Row(Vectors.dense(-2.0, 2.3, 0.0))
+        )
+        val defaultAttr = NumericAttribute.defaultAttr
+        val attrs = Array("f1", "f2", "f3").map(defaultAttr.withName)
+        val attrGroup = new AttributeGroup("userFeatures", attrs.asInstanceOf[Array[Attribute]])
+
+        val dataset = spark.createDataFrame(data, StructType(Array(attrGroup.toStructField())))
+
+        val slicer = new VectorSlicer()
+          .setInputCol("userFeatures")
+          .setOutputCol("features")
+
+        slicer
+          .setIndices(Array(1))//使用索引来选取
+          .setNames(Array("f3"))//使用列名来选取
+
+        val output = slicer.transform(dataset)
+        output.show(false)
+    }
+
+    /**
+      * 分位数离散器
+      * 采用具有连续特征的列,并输出具有分箱分类特征的列
+      * 仓的数量由参数设置numBuckets
+      * NaN值:造拟合期间,NaN值将从列中溢出。将产生一个Bucketizer用于进行预测的模型
+      * 在转换期间,Bucketizer将在数据集中找到NaN值时引发的错误,但用户还可以通过设置handleInvalid选择保留或者删除数据集中的NaN
+      * 例如:如果使用四个桶,则非NaN数据将被放入桶[0~3],但NaN将是计数在一个特殊的桶[4]
+      *
+      * 算法:仓范围使用近似算法,近似的精度可以用参数relativeError控制
+      * 当设置为0时,计算精确的分位数(计算精确的分位数是一个昂贵的操作)
+      */
+    def quantileDiscretizer(spark:SparkSession): Unit = {
+        val data = Array((0, 18.0),(1, 19.0),(2, 8.0),(3, 5.0),(4, 2.2))
+        val dataFrame = spark.createDataFrame(data).toDF("id", "hour")
+        val discretizer = new QuantileDiscretizer()
+          .setInputCol("hour")
+          .setOutputCol("result")
+          .setNumBuckets(3)
+
+        val result = discretizer.fit(dataFrame).transform(dataFrame)
+        result.show(false)
     }
 
     /**
