@@ -2,7 +2,7 @@ package com.xiaodong.spark.examples.mllib
 
 import org.apache.spark.ml.Pipeline
 import org.apache.spark.sql.functions.max
-import org.apache.spark.ml.classification.{BinaryLogisticRegressionSummary, DecisionTreeClassificationModel, DecisionTreeClassifier, LogisticRegression}
+import org.apache.spark.ml.classification._
 import org.apache.spark.ml.evaluation.MulticlassClassificationEvaluator
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
 import org.apache.spark.sql.SparkSession
@@ -20,7 +20,143 @@ object ClassificationAndRegression {
           .getOrCreate()
 //        binomialLogisticRegression(spark)
 //        multinomialLogisticRegression(spark)
-        decisionTreeClassifier(spark)
+//        decisionTreeClassifier(spark)
+//        stringIndexer(spark)
+//        randomForestClassifier(spark)
+//        gradientBoostedTreeClassifier(spark)
+        multilayerPerceptronClassifier(spark)
+    }
+
+    /**
+      * 多层感知器分类器
+      * MLPC是基于feedforward artificial neural network
+      */
+    def multilayerPerceptronClassifier(spark:SparkSession): Unit = {
+        val data = spark.read.format("libsvm").load("spark-examples/src/main/resources/sample_multiclass_classification_data.txt")
+        val Array(trainingData, testData) = data.randomSplit(Array(0.6, 0.4), seed = 1234L)
+        val layers = Array[Int](4, 5, 4, 3)
+        val trainer = new MultilayerPerceptronClassifier()
+                .setLayers(layers)
+                .setBlockSize(128)
+                .setSeed(1234L)
+                .setMaxIter(100)
+
+        val model = trainer.fit(trainingData)
+        val result = model.transform(testData)
+        val predictionAndLabels = result.select("prediction", "label")
+        val evaluator = new MulticlassClassificationEvaluator()
+                .setMetricName("accuracy")
+        println("test set accuracy = " + evaluator.evaluate(predictionAndLabels))
+
+    }
+
+    /**
+      * 梯度提升树分类器
+      */
+    def gradientBoostedTreeClassifier(spark:SparkSession): Unit = {
+        val data = spark.read.format("libsvm").load("spark-examples/src/main/resources/sample_libsvm_data.txt")
+        val labelIndexer = new StringIndexer()
+                .setInputCol("label")
+                .setOutputCol("indexedLabel")
+                .fit(data)
+        val featureIndexer = new VectorIndexer()
+                .setInputCol("features")
+                .setOutputCol("indexedFeatures")
+                .setMaxCategories(4)
+                .fit(data)
+        val Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
+        val gbt = new GBTClassifier()
+                .setLabelCol("indexedLabel")
+                .setFeaturesCol("indexedFeatures")
+                .setMaxIter(10)
+        val labelConverter = new IndexToString()
+                .setInputCol("prediction")
+                .setOutputCol("predictionLabel")
+                .setLabels(labelIndexer.labels)
+        val pipeline = new Pipeline()
+                .setStages(Array(labelIndexer, featureIndexer, gbt, labelConverter))
+        val model = pipeline.fit(trainingData)
+        val predictions = model.transform(testData)
+        predictions.select("predictionLabel", "label", "features").show(5)
+        val evaluator = new MulticlassClassificationEvaluator()
+                .setLabelCol("indexedLabel")
+                .setPredictionCol("prediction")
+                .setMetricName("accuracy")
+        val accuracy = evaluator.evaluate(predictions)
+        println("test error = " + (1.0 - accuracy))
+        val gbtModel = model.stages(2).asInstanceOf[GBTClassificationModel]
+        println("learned classification GBT model = \n" + gbtModel.toDebugString)
+    }
+
+    /**
+      * 提高决策树或随机森林等ML方法的分类效果
+      * 是对数据集特征向量中的类别(离散值)特征进行编号
+      */
+    def vectorIndexer(spark:SparkSession): Unit = {
+
+    }
+
+    /**
+      * 将一列labels转义为(index,labels基数)的index,index为labels频次的升序
+      */
+    def stringIndexer(spark:SparkSession): Unit = {
+        val data = spark.createDataFrame(Seq(
+            (0, "a"),(1, "b"),(2, "c"),(3, "a"),(4, "a"),(5, "c")
+        )).toDF("id", "category")
+        val indexer = new StringIndexer()
+                .setInputCol("category")
+                .setOutputCol("categoryIndex")
+                .fit(data).transform(data)
+        indexer.show(false)
+    }
+
+    /**
+      * 随机森林分类器
+      * 生成多颗决策树，投票选举的原则
+      */
+    def randomForestClassifier(spark:SparkSession): Unit = {
+        val data = spark.read.format("libsvm").load("spark-examples/src/main/resources/sample_libsvm_data.txt")
+        //索引标签 向标签列添加原数据
+        val labelIndexer = new StringIndexer()
+                .setInputCol("label")
+                .setOutputCol("indexedLabel")
+                .fit(data)
+        //自动识别分类特征，并对他们建立索引
+        //具有>4个不同值的要素被视为连续
+        val featureIndexer = new VectorIndexer()
+                .setInputCol("features")
+                .setOutputCol("indexedFeatures")
+                .setMaxCategories(4)
+                .fit(data)
+        val Array(trainingData, testData) = data.randomSplit(Array(0.7, 0.3))
+        val rf = new RandomForestClassifier()
+                .setLabelCol("indexedLabel")
+                .setFeaturesCol("indexedFeatures")
+                .setNumTrees(10)
+        //将索引标签转回原始标签
+        val labelConverter = new IndexToString()
+                .setInputCol("prediction")
+                .setOutputCol("predictedLabel")
+                .setLabels(labelIndexer.labels)
+        val pipeline = new Pipeline()
+                .setStages(Array(labelIndexer, featureIndexer, rf, labelConverter))
+
+        val model = pipeline.fit(trainingData)
+
+        val predictions = model.transform(testData)
+
+        predictions.show(false)
+
+        val evaluator = new MulticlassClassificationEvaluator()
+                .setLabelCol("indexedLabel")
+                .setPredictionCol("prediction")
+                .setMetricName("accuracy")
+        val accuracy = evaluator.evaluate(predictions)
+        println("test error = " + (1.0 - accuracy))
+
+        val rfModel = model.stages(2).asInstanceOf[RandomForestClassificationModel]
+        println("Learned classification forest model:\n" + rfModel.toDebugString)
+
     }
 
     /**
