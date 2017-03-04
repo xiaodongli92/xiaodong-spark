@@ -266,6 +266,13 @@ object ClassificationAndRegression {
         objectiveHistory.foreach(println)
 
         val binarySummary = trainingSummary.asInstanceOf[BinaryLogisticRegressionSummary]
+
+        //ROC(Receiver Operating Characteristic)
+        //横坐标是false positive rate(FPR) 纵坐标是true positive rate(TPR)
+        //对某个分类器而言，我们可以根据其在测试样本上的表现得到一个TPR和FPR点对 此分类器就可以映射成ROC平面上的一个点
+        //调整这个分类器分类时候使用的阈值，我们就可以得到一个经过(0, 0)，(1, 1)的曲线，这就是此分类器的ROC曲线
+        //一般情况下，这个曲线都应该处于(0, 0)和(1, 1)连线的上方。因为(0, 0)和(1, 1)连线形成的ROC曲线实际上代表的是一个随机分类器
+        //人们总是希望能有一个数值来标志分类器的好坏 Area Under roc Curve(AUC)就出现了 AUC的值就是处于ROC curve下方的那部分面积的大小
         val roc = binarySummary.roc
         roc.show(false)
         println(s"areaUnderROC:${binarySummary.areaUnderROC}")
