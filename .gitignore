@@ -1,24 +1,4 @@
-*.class
-
-# Mobile Tools for Java (J2ME)
-.mtj.tmp/
-
-# Package Files #
-*.jar
-*.war
-*.ear
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
-hs_err_pid*
-
-/.idea/*
-/scala-easy/scala-easy.iml
-/easy-scala/easy-scala.iml
-/easy-scala/xiaodong-spark-easy-scala.iml
-/xiaodong-spark.iml
-/easy-scala/target/
-/spark-examples/spark-examples.iml
-/spark-examples/target/
-/*/*.iml
-/easy-spark/target/
-/target/*
+.idea/*
+/**/target/*
+/**/*.iml
+/*.iml
