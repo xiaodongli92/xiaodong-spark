@@ -25,24 +25,24 @@ object ForExample {
         println("--------------------------")
     }
 
-    def foreach1(args : Array[String]) = args.foreach(print)
+    def foreach1(args : Array[String]):Unit = args.foreach(print)
 
-    def foreach2(args : Array[String]) = args.foreach((arg : String) => print(arg))
+    def foreach2(args : Array[String]):Unit = args.foreach((arg : String) => print(arg))
 
-    def foreach3(args : Array[String]) = {
+    def foreach3(args : Array[String]):Unit = {
         for (arg <- args) {
             print(arg)
         }
     }
 
-    def foreach4(args : Array[String]) = {
+    def foreach4(args : Array[String]):Unit = {
         val length = args.length - 1
         for (i <- 0 to length) {
             print(args(i))
         }
     }
 
-    def foreach5(args: Array[String]) = {
+    def foreach5(args: Array[String]):Array[String] = {
         for (arg <- args if arg == "hello") yield arg
     }
 }
